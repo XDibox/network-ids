@@ -16,6 +16,7 @@ from colorama import Fore, Style, init
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import LOG_FILE, INTERFACE, ANOMALY_THRESHOLDS, THREAT_INTEL, GEOIP
+from core import rule_loader
 from core.alert import AlertManager
 from core.dashboard import Dashboard
 from core.geoip import GeoIPEngine
@@ -89,11 +90,13 @@ def main():
     cfg = dict(ANOMALY_THRESHOLDS)
     cfg['baseline_window'] = args.baseline
 
+    rules = rule_loader.load()
+
     alert_mgr    = AlertManager(args.log)
     pcap_capture = PcapCapture(output_dir='captures', buffer_seconds=15)
     alert_mgr.set_pcap(pcap_capture)
 
-    sig_engine  = SignatureEngine(alert_mgr)
+    sig_engine  = SignatureEngine(alert_mgr, rules)
     anom_engine = AnomalyEngine(alert_mgr, cfg)
     ti_engine   = ThreatIntelEngine(alert_mgr, THREAT_INTEL)
     sniffer     = PacketSniffer(args.interface, None)
@@ -129,10 +132,12 @@ def main():
             args=(alert_mgr, sniffer, anom_engine, start_time, stop_event),
             daemon=True,
         )
+        rule_names = ', '.join(sorted(rules.keys()))
         iface = args.interface or 'auto-detect'
         print(f"{Fore.GREEN}[+] Interface  : {iface}")
         print(f"[+] Log file   : {args.log}")
         print(f"[+] Baseline   : {args.baseline}s")
+        print(f"[+] Rules      : {len(rules)} files ({rule_names})")
         print(f"[+] Detections : Signatures + Anomalies + Threat Intel")
         print(f"\n{Fore.YELLOW}[*] Listening… Press Ctrl+C to stop.{Style.RESET_ALL}\n")
 

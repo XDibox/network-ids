@@ -1,0 +1,6 @@
+name: SYN FLOOD
+severity: CRITICAL
+cooldown: 15
+threshold:
+  packet_count: 200   # SYN packets within time_window
+  time_window: 5      # seconds

@@ -1,0 +1,34 @@
+# Ports commonly associated with malware, backdoors, and attack frameworks.
+# Add any port you want monitored — no code changes needed.
+
+- port: 4444
+  description: Metasploit default
+  severity: HIGH
+
+- port: 1337
+  description: Common backdoor
+  severity: HIGH
+
+- port: 31337
+  description: Back Orifice
+  severity: HIGH
+
+- port: 12345
+  description: NetBus
+  severity: HIGH
+
+- port: 5555
+  description: Android Debug Bridge
+  severity: MEDIUM
+
+- port: 9001
+  description: Tor relay
+  severity: MEDIUM
+
+- port: 6666
+  description: IRC/Malware
+  severity: HIGH
+
+- port: 6667
+  description: IRC/Malware
+  severity: HIGH

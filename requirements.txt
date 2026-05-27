@@ -1,4 +1,5 @@
 scapy>=2.5.0
 colorama>=0.4.6
 rich>=13.0.0
+pyyaml>=6.0
 # geoip2>=4.0.0  # Opcional: descomentar si usas MaxMind GeoLite2-City.mmdb

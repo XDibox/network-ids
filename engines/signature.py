@@ -2,22 +2,45 @@ import re
 import time
 from collections import defaultdict, deque
 
-from config import SIGNATURE_THRESHOLDS, SUSPICIOUS_PORTS, HTTP_PATTERNS
 from core.whitelist import is_whitelisted
 
 
 class SignatureEngine:
-    """Rule-based detection against known attack patterns."""
+    """Rule-based detection engine. Rules are loaded from YAML via core.rule_loader."""
 
-    def __init__(self, alert_manager):
+    def __init__(self, alert_manager, rules: dict):
         self._alert = alert_manager
+        self._rules = rules
+
+        # Build port → (description, severity) lookup from suspicious_ports.yml
+        self._suspicious_ports = {
+            r['port']: (r['description'], r.get('severity', 'HIGH'))
+            for r in rules.get('suspicious_ports', [])
+        }
+
+        # Build [(compiled_re, name, severity)] from http_attacks.yml
+        self._http_patterns = [
+            (re.compile(r['pattern'], re.IGNORECASE), r['name'], r.get('severity', 'HIGH'))
+            for r in rules.get('http_attacks', [])
+        ]
+
+        # Build port → service-label lookup from brute_force.yml
+        bf = rules.get('brute_force', {})
+        self._bf_ports = {int(k): v for k, v in bf.get('ports', {}).items()}
+
+        # tcp_scans rules as list of (flags_int, name, severity, description)
+        self._tcp_scan_rules = [
+            (r['flags'], r['name'], r.get('severity', 'MEDIUM'), r.get('description', ''))
+            for r in rules.get('tcp_scans', [])
+        ]
+
         self._port_tracker  = defaultdict(deque)
         self._icmp_tracker  = defaultdict(deque)
         self._syn_tracker   = defaultdict(deque)
         self._brute_tracker = defaultdict(lambda: defaultdict(deque))
-        self._arp_table:    dict = {}              # ip -> mac (ARP spoofing)
-        self._dns_tracker   = defaultdict(deque)  # src -> [(ts, size)]
-        self._fp_tracker    = defaultdict(deque)  # src -> [ts]  (OS fingerprint probes)
+        self._arp_table:    dict = {}
+        self._dns_tracker   = defaultdict(deque)
+        self._fp_tracker    = defaultdict(deque)
         self._cooldown: dict = defaultdict(float)
 
     def _cooldown_ok(self, key: str, now: float, seconds: float) -> bool:
@@ -66,9 +89,10 @@ class SignatureEngine:
     # ── Private helpers ──────────────────────────────────────────────────────
 
     def _check_port_scan(self, packet, src):
-        cfg    = SIGNATURE_THRESHOLDS['port_scan']
+        rule   = self._rules['port_scan']
+        thr    = rule['threshold']
         now    = time.time()
-        window = cfg['time_window']
+        window = thr['time_window']
         dport  = packet['TCP'].dport
 
         track = self._port_tracker[src]
@@ -77,74 +101,74 @@ class SignatureEngine:
             track.popleft()
 
         unique = len({p for _, p in track})
-        if unique >= cfg['unique_ports'] and self._cooldown_ok(f'portscan_{src}', now, 20):
+        if unique >= thr['unique_ports'] and self._cooldown_ok(f'portscan_{src}', now, rule['cooldown']):
             self._alert.alert(
-                'HIGH', 'PORT SCAN', src,
+                rule['severity'], rule['name'], src,
                 f"{unique} unique ports in {window}s", f"last={dport}",
             )
             self._port_tracker[src].clear()
 
     def _check_tcp_flags(self, packet, src):
-        flags = packet['TCP'].flags
-
-        if flags == 0x00:
-            self._alert.alert('MEDIUM', 'NULL SCAN', src, "TCP packet with no flags")
-        elif int(flags) == 0x29:
-            self._alert.alert('MEDIUM', 'XMAS SCAN', src, "FIN+PSH+URG flags set")
-        elif int(flags) == 0x01:
-            self._alert.alert('LOW',    'FIN SCAN',  src, "Only FIN flag set")
+        flags = int(packet['TCP'].flags)
+        for rule_flags, name, severity, description in self._tcp_scan_rules:
+            if flags == rule_flags:
+                self._alert.alert(severity, name, src, description)
+                break
 
     def _check_syn_flood(self, packet, src, dst):
         if int(packet['TCP'].flags) != 0x02:
             return
 
-        cfg    = SIGNATURE_THRESHOLDS['syn_flood']
+        rule   = self._rules['syn_flood']
+        thr    = rule['threshold']
         now    = time.time()
-        window = cfg['time_window']
+        window = thr['time_window']
 
         track = self._syn_tracker[src]
         track.append(now)
         while track and now - track[0] > window:
             track.popleft()
 
-        if len(track) >= cfg['packet_count'] and self._cooldown_ok(f'synflood_{src}', now, 15):
+        if len(track) >= thr['packet_count'] and self._cooldown_ok(f'synflood_{src}', now, rule['cooldown']):
             self._alert.alert(
-                'CRITICAL', 'SYN FLOOD', src,
+                rule['severity'], rule['name'], src,
                 f"{len(track)} SYN pkts in {window}s", f"dst={dst}",
             )
             self._syn_tracker[src].clear()
 
     def _check_brute_force(self, packet, src):
-        cfg   = SIGNATURE_THRESHOLDS['brute_force']
+        rule  = self._rules['brute_force']
+        thr   = rule['threshold']
         dport = packet['TCP'].dport
 
-        if dport not in cfg['ports']:
+        if dport not in self._bf_ports:
             return
         if not (int(packet['TCP'].flags) & 0x02):
             return
 
         now    = time.time()
-        window = cfg['time_window']
+        window = thr['time_window']
 
         track = self._brute_tracker[src][dport]
         track.append(now)
         while track and now - track[0] > window:
             track.popleft()
 
-        if len(track) >= cfg['connection_count']:
-            svc = {22: 'SSH', 21: 'FTP', 3389: 'RDP', 23: 'Telnet'}.get(dport, str(dport))
+        if len(track) >= thr['connection_count']:
+            svc = self._bf_ports.get(dport, str(dport))
             self._alert.alert(
-                'HIGH', 'BRUTE FORCE', src,
+                rule['severity'], rule['name'], src,
                 f"{svc} — {len(track)} attempts in {window}s",
             )
             self._brute_tracker[src][dport].clear()
 
     def _check_suspicious_ports(self, packet, src, dst, proto):
         dport = packet[proto].dport if packet.haslayer(proto) else None
-        if dport and dport in SUSPICIOUS_PORTS:
+        if dport and dport in self._suspicious_ports:
+            desc, severity = self._suspicious_ports[dport]
             self._alert.alert(
-                'HIGH', 'SUSPICIOUS PORT', src,
-                f"Port {dport} ({SUSPICIOUS_PORTS[dport]})", f"dst={dst}",
+                severity, 'SUSPICIOUS PORT', src,
+                f"Port {dport} ({desc})", f"dst={dst}",
             )
 
     def _check_http_payload(self, packet, src):
@@ -158,11 +182,12 @@ class SignatureEngine:
         if not any(kw in payload for kw in ('HTTP', 'GET ', 'POST ', 'PUT ')):
             return
 
-        for pattern, attack_type in HTTP_PATTERNS:
-            if re.search(pattern, payload, re.IGNORECASE):
+        for compiled_re, name, severity in self._http_patterns:
+            if compiled_re.search(payload):
                 self._alert.alert(
-                    'HIGH', attack_type, src,
-                    "Malicious pattern in HTTP payload", f"rule={pattern[:30]}",
+                    severity, name, src,
+                    "Malicious pattern in HTTP payload",
+                    f"rule={compiled_re.pattern[:30]}",
                 )
                 break
 
@@ -171,18 +196,19 @@ class SignatureEngine:
         if packet[ICMP].type != 8:
             return
 
-        cfg    = SIGNATURE_THRESHOLDS['icmp_flood']
+        rule   = self._rules['icmp_flood']
+        thr    = rule['threshold']
         now    = time.time()
-        window = cfg['time_window']
+        window = thr['time_window']
 
         track = self._icmp_tracker[src]
         track.append(now)
         while track and now - track[0] > window:
             track.popleft()
 
-        if len(track) >= cfg['packet_count'] and self._cooldown_ok(f'icmpflood_{src}', now, 15):
+        if len(track) >= thr['packet_count'] and self._cooldown_ok(f'icmpflood_{src}', now, rule['cooldown']):
             self._alert.alert(
-                'HIGH', 'ICMP FLOOD', src,
+                rule['severity'], rule['name'], src,
                 f"{len(track)} echo requests in {window}s", f"dst={dst}",
             )
             self._icmp_tracker[src].clear()
@@ -192,7 +218,7 @@ class SignatureEngine:
     def _check_arp_spoofing(self, packet):
         arp = packet['ARP']
 
-        if arp.op != 2:  # Solo ARP replies (is-at)
+        if arp.op != 2:  # ARP replies only (is-at)
             return
 
         src_ip  = arp.psrc
@@ -212,7 +238,7 @@ class SignatureEngine:
                 'CRITICAL', 'ARP SPOOFING', src_ip,
                 f"MAC changed {known_mac} → {src_mac}",
             )
-            self._arp_table[src_ip] = src_mac  # Actualiza para no repetir la misma alerta
+            self._arp_table[src_ip] = src_mac
 
     # ── DNS Amplification ────────────────────────────────────────────────────
 
@@ -220,7 +246,6 @@ class SignatureEngine:
         dns = packet['DNS']
         now = time.time()
 
-        # Solo respuestas DNS (qr=1) de gran tamaño
         if dns.qr != 1:
             return
 
@@ -233,7 +258,6 @@ class SignatureEngine:
         while track and now - track[0][0] > 10:
             track.popleft()
 
-        # Alerta si hay múltiples respuestas grandes o una respuesta enorme
         total_bytes = sum(s for _, s in track)
         if pkt_size > 3000 and self._cooldown_ok(f'dnsamp_{src}', now, 30):
             self._alert.alert(
@@ -246,13 +270,12 @@ class SignatureEngine:
                 f"{len(track)} DNS responses in 10s ({total_bytes} bytes total)",
             )
 
-        # ANY query (vector de amplificación clásico)
         if dns.qr == 0 and dns.qdcount > 0:
             try:
                 if dns.qd.qtype == 255:  # ANY
                     self._alert.alert(
                         'MEDIUM', 'DNS ANY QUERY', src,
-                        f"DNS ANY query — common amplification vector",
+                        "DNS ANY query — common amplification vector",
                         f"qname={dns.qd.qname.decode(errors='ignore')}",
                     )
             except Exception:
@@ -261,8 +284,7 @@ class SignatureEngine:
     # ── OS Fingerprinting ────────────────────────────────────────────────────
 
     def _check_os_fingerprint(self, packet, src):
-        """Detect Nmap OS detection probes and TTL-based fingerprinting."""
-        now = time.time()
+        now    = time.time()
         reason = None
 
         if packet.haslayer('TCP'):
@@ -270,26 +292,19 @@ class SignatureEngine:
             flags = int(tcp.flags)
             opts  = {k: v for k, v in tcp.options} if tcp.options else {}
 
-            # Nmap OS probe T2-T7: SYN con window=128 o 256 y opciones específicas
             if flags == 0x02 and tcp.window in (1, 2, 4, 8, 16, 32, 64, 128):
                 if 'WScale' in opts and 'Timestamp' in opts:
                     reason = f"Nmap-style SYN probe (win={tcp.window}, opts={list(opts.keys())})"
-
-            # ECN probe: SYN + ECE + CWR
             elif flags == 0xC2:
                 reason = "ECN probe (SYN+ECE+CWR) — Nmap OS detection"
-
-            # URG sin datos (probe U1)
             elif (flags & 0x20) and not packet.haslayer('Raw'):
                 reason = "URG probe without payload — OS fingerprinting"
 
         if packet.haslayer('ICMP'):
             icmp = packet['ICMP']
             ip   = packet['IP']
-            # TTL muy bajo = traceroute o fingerprint probe
             if ip.ttl <= 3 and icmp.type == 8:
                 reason = f"ICMP echo with TTL={ip.ttl} — TTL fingerprinting"
-            # IE probes de Nmap: ICMP con código y datos específicos
             elif icmp.type == 8 and icmp.code != 0:
                 reason = f"ICMP echo with non-zero code={icmp.code} — OS probe"
 

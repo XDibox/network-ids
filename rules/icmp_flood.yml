@@ -1,0 +1,6 @@
+name: ICMP FLOOD
+severity: HIGH
+cooldown: 15
+threshold:
+  packet_count: 100   # ICMP echo requests within time_window
+  time_window: 5      # seconds

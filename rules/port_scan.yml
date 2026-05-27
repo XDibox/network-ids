@@ -1,0 +1,6 @@
+name: PORT SCAN
+severity: HIGH
+cooldown: 20          # seconds between alerts for the same source IP
+threshold:
+  unique_ports: 15    # distinct destination ports within time_window
+  time_window: 10     # seconds

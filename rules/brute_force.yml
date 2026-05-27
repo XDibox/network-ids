@@ -1,0 +1,12 @@
+name: BRUTE FORCE
+severity: HIGH
+threshold:
+  connection_count: 10  # SYN attempts per port within time_window
+  time_window: 30       # seconds
+
+# Monitored ports — port number: service label
+ports:
+  22: SSH
+  21: FTP
+  3389: RDP
+  23: Telnet

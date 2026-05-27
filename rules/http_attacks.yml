@@ -1,0 +1,31 @@
+# HTTP payload pattern matching (regex, case-insensitive).
+# Add new attack patterns here — no code changes needed.
+# Backslashes in patterns: use YAML single-quoted strings to avoid double-escaping.
+
+- name: SQL Injection
+  pattern: 'union.*select'
+  severity: HIGH
+
+- name: SQL Injection
+  pattern: "'.*or.*'.*=.*'"
+  severity: HIGH
+
+- name: Directory Traversal
+  pattern: '\.\./\.\.'
+  severity: HIGH
+
+- name: XSS Attempt
+  pattern: '<script'
+  severity: HIGH
+
+- name: LFI Attempt
+  pattern: '/etc/passwd'
+  severity: HIGH
+
+- name: Command Injection
+  pattern: 'cmd\.exe|/bin/sh|/bin/bash'
+  severity: HIGH
+
+- name: Code Injection
+  pattern: 'eval\(|base64_decode\('
+  severity: HIGH

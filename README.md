@@ -112,6 +112,53 @@ pip install -r requirements.txt
 
 ---
 
+## Custom Rules (YAML)
+
+Detection rules are defined in YAML files inside `rules/`. You can tune thresholds or add new entries without touching any Python code.
+
+```
+rules/
+├── port_scan.yml        # Unique ports per time window
+├── syn_flood.yml        # SYN packet rate threshold
+├── icmp_flood.yml       # ICMP echo rate threshold
+├── brute_force.yml      # Login attempt rate + monitored ports
+├── tcp_scans.yml        # Flag-based scans (NULL, XMAS, FIN …)
+├── suspicious_ports.yml # Ports to flag on any connection
+└── http_attacks.yml     # Regex patterns matched against HTTP payloads
+```
+
+**Example — lower the port scan threshold:**
+
+```yaml
+# rules/port_scan.yml
+name: PORT SCAN
+severity: HIGH
+cooldown: 20
+threshold:
+  unique_ports: 10   # was 15
+  time_window: 5     # was 10
+```
+
+**Example — add a new suspicious port:**
+
+```yaml
+# rules/suspicious_ports.yml  (append)
+- port: 8888
+  description: Common C2 / Jupyter
+  severity: MEDIUM
+```
+
+**Example — add a new HTTP attack pattern:**
+
+```yaml
+# rules/http_attacks.yml  (append)
+- name: Log4Shell
+  pattern: '\$\{jndi:'
+  severity: CRITICAL
+```
+
+---
+
 ## Configuration
 
 Edit `config.py` to customize behavior:
