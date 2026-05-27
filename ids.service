@@ -1,0 +1,15 @@
+[Unit]
+Description=Network Intrusion Detection System
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/home/Fabian/venv-ids/bin/python3 /mnt/c/Users/XD-ib/OneDrive/Documentos/proyectos/IDS/IDS.py -i eth0 --baseline 60
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
