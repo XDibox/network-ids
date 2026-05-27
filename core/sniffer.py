@@ -25,6 +25,6 @@ class PacketSniffer:
         sniff(**kwargs)
 
     def _process(self, packet):
-        if self._running:
+        if self._running and self.callback:
             self.packet_count += 1
             self.callback(packet)

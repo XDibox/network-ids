@@ -57,9 +57,21 @@ _LOG_LEVELS = {
 
 class AlertManager:
     def __init__(self, log_file: str):
-        self._log_file = log_file
-        self._counts = {'LOW': 0, 'MEDIUM': 0, 'HIGH': 0, 'CRITICAL': 0}
+        self._log_file  = log_file
+        self._counts    = {'LOW': 0, 'MEDIUM': 0, 'HIGH': 0, 'CRITICAL': 0}
+        self._pcap      = None
+        self._dashboard = None
+        self._geoip     = None
         self._setup_logger()
+
+    def set_pcap(self, pcap_capture):
+        self._pcap = pcap_capture
+
+    def set_dashboard(self, dashboard):
+        self._dashboard = dashboard
+
+    def set_geoip(self, geoip):
+        self._geoip = geoip
 
     def _setup_logger(self):
         logging.basicConfig(
@@ -74,9 +86,14 @@ class AlertManager:
         color = _SEVERITY_COLORS.get(severity, Fore.WHITE)
         icon  = _SEVERITY_ICONS.get(severity, '[?]')
 
-        extra_part = f'  ({extra})' if extra else ''
+        geo = self._geoip.format(src) if self._geoip else ''
+        extra_parts = [e for e in (extra, geo) if e]
+        extra_part  = f'  ({" | ".join(extra_parts)})' if extra_parts else ''
         line = f"{icon} {category:<20} {src:<18} {description}{extra_part}"
-        print(f"{color}[{timestamp}] {line}{Style.RESET_ALL}")
+
+        # En modo dashboard el Live de rich gestiona el terminal — no imprimir
+        if not self._dashboard:
+            print(f"{color}[{timestamp}] {line}{Style.RESET_ALL}")
 
         self._logger.log(
             _LOG_LEVELS.get(severity, logging.INFO),
@@ -84,12 +101,19 @@ class AlertManager:
         )
         self._counts[severity] = self._counts.get(severity, 0) + 1
 
+        if self._dashboard:
+            self._dashboard.record(severity, category, src, description)
+
         if severity in _NOTIFY_SEVERITIES:
             _send_windows_toast(
                 title=f"IDS — {severity}: {category}",
                 message=f"{src}  {description}",
                 icon=_TOAST_ICONS.get(severity, 'Warning'),
             )
+            if self._pcap:
+                filepath = self._pcap.save(severity, category, src)
+                if filepath:
+                    print(f"{Fore.CYAN}  [PCAP] Saved → {filepath}{Style.RESET_ALL}")
 
     def print_stats(self, packet_count: int, start_time: float):
         import time

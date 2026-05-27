@@ -1,6 +1,6 @@
 # Network Intrusion Detection System (IDS)
 
-A real-time network IDS written in Python that combines **signature-based** and **anomaly-based** detection engines to identify malicious traffic patterns.
+A real-time network IDS written in Python combining **signature-based** and **anomaly-based** detection engines, threat intelligence enrichment, GeoIP geolocation, automatic PCAP capture, and a live TUI dashboard.
 
 Built as a cybersecurity portfolio project demonstrating packet analysis, statistical baselining, and multi-layered threat detection.
 
@@ -11,11 +11,16 @@ Built as a cybersecurity portfolio project demonstrating packet analysis, statis
 ```
 IDS/
 ├── IDS.py              # Entry point & CLI
-├── config.py           # Thresholds, rules & whitelist
+├── config.py           # Thresholds, rules, whitelist & integrations
 ├── report.py           # Alert log report generator
+├── ids.service         # systemd service file
 ├── core/
-│   ├── alert.py        # Alert manager (console + log + Windows notifications)
+│   ├── alert.py        # Alert manager (console + log + Windows toast)
+│   ├── dashboard.py    # Live TUI dashboard (rich)
+│   ├── geoip.py        # GeoIP engine (ip-api.com / MaxMind)
+│   ├── pcap_writer.py  # Automatic PCAP capture on alerts
 │   ├── sniffer.py      # Threaded packet capture (scapy)
+│   ├── threat_intel.py # Threat intelligence (AbuseIPDB + local feeds)
 │   └── whitelist.py    # IP/CIDR whitelist engine
 └── engines/
     ├── signature.py    # Rule-based detection engine
@@ -39,8 +44,8 @@ IDS/
 | ARP Spoofing | CRITICAL | IP→MAC table change detected |
 | DNS Amplification | HIGH | DNS response > 3000 bytes |
 | DNS ANY Query | MEDIUM | DNS type ANY — amplification vector |
-| OS Fingerprinting | MEDIUM | Nmap OS probes, low-TTL packets |
-| Suspicious Ports | HIGH | Metasploit, Back Orifice, NetBus, etc. |
+| OS Fingerprinting | MEDIUM | Nmap OS probes, ECN probe, low-TTL packets |
+| Suspicious Ports | HIGH | Metasploit (4444), Back Orifice (31337), NetBus, etc. |
 | SQL Injection | HIGH | Pattern match in HTTP payload |
 | XSS / LFI / RCE | HIGH | Pattern match in HTTP payload |
 
@@ -51,6 +56,18 @@ IDS/
 | IP Sweep | MEDIUM | 30+ new IPs per minute |
 | Port Diversity | MEDIUM | 20+ unique ports per IP in 60s |
 | Protocol Anomaly | MEDIUM | Protocol ratio > 3× baseline distribution |
+
+### Threat Intelligence
+| Source | Method |
+|---|---|
+| AbuseIPDB | REST API — alerts on IPs with confidence score ≥ 50% |
+| Local feeds | Text files (one IP per line) loaded at startup |
+| Static blacklist | Hardcoded IPs in `config.py` |
+
+### GeoIP Enrichment
+Every alert includes country, city, ISP, and proxy/hosting detection.
+- Default: **ip-api.com** (free, no key required, 45 req/min)
+- Optional: **MaxMind GeoLite2** (offline, no rate limit)
 
 ---
 
@@ -64,6 +81,8 @@ IDS/
 ```
 scapy>=2.5.0
 colorama>=0.4.6
+rich>=13.0.0
+# geoip2>=4.0.0  # Optional: for MaxMind offline database
 ```
 
 ---
@@ -74,7 +93,7 @@ colorama>=0.4.6
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/network-ids.git
+git clone https://github.com/XDibox/network-ids.git
 cd network-ids
 
 # Create virtual environment (use Linux filesystem, not /mnt/c)
@@ -93,25 +112,61 @@ pip install -r requirements.txt
 
 ---
 
+## Configuration
+
+Edit `config.py` to customize behavior:
+
+```python
+# AbuseIPDB threat intelligence (get free key at abuseipdb.com)
+# Set via environment variable — never hardcode in config.py
+# export ABUSEIPDB_KEY=your_key_here
+
+# GeoIP — ip-api.com by default (no key needed)
+# For offline use: download GeoLite2-City.mmdb from maxmind.com
+GEOIP = {
+    'enabled': True,
+    'db_path': '',   # '/path/to/GeoLite2-City.mmdb'
+}
+
+# Trusted IPs and subnets (no alerts generated)
+WHITELIST = {
+    '127.0.0.1',
+    '192.168.1.1',   # gateway
+}
+WHITELIST_NETWORKS = [
+    '172.18.0.0/16', # WSL virtual network
+]
+```
+
+---
+
 ## Usage
 
 ```bash
 # List available network interfaces
 sudo ~/venv-ids/bin/python3 IDS.py --list-interfaces
 
-# Start IDS (auto-detect interface, 30s baseline)
-sudo ~/venv-ids/bin/python3 IDS.py
+# Standard mode (text alerts)
+sudo ~/venv-ids/bin/python3 IDS.py -i eth0
 
-# Specify interface and baseline window
-sudo ~/venv-ids/bin/python3 IDS.py -i eth0 --baseline 60
+# Live TUI dashboard
+sudo ~/venv-ids/bin/python3 IDS.py -i eth0 --dashboard
 
-# Custom log file
-sudo ~/venv-ids/bin/python3 IDS.py -i eth0 --log /var/log/ids.log
+# Custom baseline window and log file
+sudo ~/venv-ids/bin/python3 IDS.py -i eth0 --baseline 60 --log /var/log/ids.log
+```
+
+### Environment variables
+
+```bash
+export ABUSEIPDB_KEY=your_key_here
+sudo -E ~/venv-ids/bin/python3 IDS.py -i eth0 --dashboard
 ```
 
 ### Run as a systemd service (persistent)
 
 ```bash
+# Edit ids.service: replace YOUR_USER and /path/to/IDS
 sudo cp ids.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable ids
@@ -141,31 +196,34 @@ python3 report.py --export report.txt
 Sample output:
 ```
 ════════════════════════════════════════════════════════════════
-  IDS ALERT REPORT  |  2026-05-26 22:29  →  2026-05-26 22:35
+  IDS ALERT REPORT  |  2026-05-27 01:09  →  2026-05-27 01:35
 ════════════════════════════════════════════════════════════════
 
   SEVERITY SUMMARY
-  ────────────────────────────────────────────────────────────────
-  CRITICAL    ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░     3  (4.9%)
+  CRITICAL    ███░░░░░░░░░░░░░░░░░░░░░░░░░░░     3  (4.9%)
   HIGH        ████████████████████████░░░░░░    61  (83.6%)
-  MEDIUM      ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░     1  (1.4%)
+  MEDIUM      █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     1  (1.4%)
+
+  TOP ATTACKING IPs
+  192.168.1.50    ██████████████████████████    61  [PORT SCAN, SYN FLOOD]
 ```
 
 ---
 
-## Whitelist
+## PCAP Capture
 
-Add trusted IPs or subnets in `config.py` to suppress false positives:
+HIGH and CRITICAL alerts automatically save the last 15 seconds of traffic from the source IP to `captures/`:
 
-```python
-WHITELIST = {
-    '192.168.1.1',   # gateway
-    '192.168.1.100', # trusted host
-}
+```
+captures/
+├── 20260527_010915_PORT_SCAN_x.x.x.x.pcap
+└── 20260527_010916_SYN_FLOOD_x.x.x.x.pcap
+```
 
-WHITELIST_NETWORKS = [
-    '10.0.0.0/8',
-]
+Analyze captures:
+```bash
+tcpdump -r captures/file.pcap
+# Or open in Wireshark
 ```
 
 ---
@@ -173,19 +231,19 @@ WHITELIST_NETWORKS = [
 ## Testing
 
 ```bash
-# Port scan detection
+# Port scan — triggers PORT SCAN (HIGH)
 nmap -sS <target_ip>
 
-# OS fingerprinting detection
+# OS fingerprinting — triggers OS FINGERPRINTING (MEDIUM)
 sudo nmap -O <target_ip>
 
-# ICMP flood detection
+# ICMP flood — triggers ICMP FLOOD (HIGH)
 sudo ping -f -c 200 <target_ip>
 
-# SYN flood detection
+# SYN flood — triggers SYN FLOOD (CRITICAL)
 sudo hping3 -S --flood -p 80 <target_ip>
 
-# ARP spoofing detection (via crafted packet)
+# ARP spoofing — triggers ARP SPOOFING (CRITICAL)
 sudo python3 -c "
 from scapy.all import sendp, ARP, Ether
 pkt = Ether(dst='ff:ff:ff:ff:ff:ff') / ARP(op=2, psrc='192.168.1.1', hwsrc='aa:bb:cc:dd:ee:ff')
