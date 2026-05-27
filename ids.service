@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-ExecStart=/home/Fabian/venv-ids/bin/python3 /mnt/c/Users/XD-ib/OneDrive/Documentos/proyectos/IDS/IDS.py -i eth0 --baseline 60
+ExecStart=/home/YOUR_USER/venv-ids/bin/python3 /path/to/IDS/IDS.py -i eth0 --baseline 60
 Restart=always
 RestartSec=5
 StandardOutput=journal
