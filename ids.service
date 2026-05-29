@@ -4,12 +4,19 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+# Create a dedicated user: sudo useradd -r -s /sbin/nologin ids-user
+User=ids-user
+Group=ids-user
 ExecStart=/home/YOUR_USER/venv-ids/bin/python3 /path/to/IDS/IDS.py -i eth0 --baseline 60
 Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
+
+# Grant only the capabilities required for raw packet capture
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target

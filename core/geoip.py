@@ -13,6 +13,9 @@ _PRIVATE_PREFIXES = (
     '172.31.', '192.168.',
 )
 
+_MAX_SEEN  = 50_000
+_MAX_CACHE = 10_000
+
 _API_FIELDS = 'country,countryCode,regionName,city,isp,as,proxy,hosting'
 
 
@@ -38,6 +41,8 @@ class GeoIPEngine:
 
     def prefetch(self, ip: str):
         """Queue an IP for background resolution (call on every new IP seen)."""
+        if len(self._seen) >= _MAX_SEEN:
+            self._seen.clear()
         if ip not in self._seen and not _is_private(ip):
             self._seen.add(ip)
             self._queue.put(ip)
@@ -79,12 +84,15 @@ class GeoIPEngine:
     def _lookup_api(self, ip: str):
         try:
             url = (
-                f"http://ip-api.com/json/{urllib.parse.quote(ip)}"
+                f"https://ip-api.com/json/{urllib.parse.quote(ip)}"
                 f"?fields={_API_FIELDS}"
             )
             with urllib.request.urlopen(url, timeout=6) as resp:
                 data = json.loads(resp.read().decode())
             if data.get('status') == 'success':
+                if len(self._cache) >= _MAX_CACHE:
+                    for k in list(self._cache.keys())[:_MAX_CACHE // 4]:
+                        del self._cache[k]
                 self._cache[ip] = {
                     'country':     data.get('country', ''),
                     'countryCode': data.get('countryCode', ''),

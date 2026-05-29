@@ -18,6 +18,9 @@ def _send_windows_toast(title: str, message: str, icon: str = 'Warning'):
     """Send a Windows toast notification from WSL via PowerShell."""
     if not shutil.which('powershell.exe'):
         return
+    # Escape single quotes to prevent PowerShell command injection
+    title_safe = title.replace("'", "''")
+    msg_safe   = message.replace("'", "''")
     ps = (
         "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');"
         "$n = New-Object System.Windows.Forms.NotifyIcon;"
@@ -26,7 +29,7 @@ def _send_windows_toast(title: str, message: str, icon: str = 'Warning'):
         "$n.ShowBalloonTip(6000, '%(title)s', '%(msg)s', [System.Windows.Forms.ToolTipIcon]::%(icon)s);"
         "Start-Sleep -Milliseconds 6500;"
         "$n.Dispose()"
-    ) % {'icon': icon, 'title': title, 'msg': message}
+    ) % {'icon': icon, 'title': title_safe, 'msg': msg_safe}
     subprocess.Popen(
         ['powershell.exe', '-WindowStyle', 'Hidden', '-Command', ps],
         stdout=subprocess.DEVNULL,

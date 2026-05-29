@@ -6,6 +6,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+_MAX_SEEN  = 50_000
+_MAX_CACHE = 10_000
+
 
 class ThreatIntelEngine:
     """
@@ -51,6 +54,8 @@ class ThreatIntelEngine:
 
     def check(self, ip: str):
         """Call once per new source IP seen on the network."""
+        if len(self._seen) >= _MAX_SEEN:
+            self._seen.clear()
         if ip in self._seen or self._is_private(ip):
             return
         self._seen.add(ip)
@@ -140,6 +145,9 @@ class ThreatIntelEngine:
             }
 
         with self._cache_lock:
+            if len(self._cache) >= _MAX_CACHE:
+                for k in list(self._cache.keys())[:_MAX_CACHE // 4]:
+                    del self._cache[k]
             self._cache[ip] = (time.time(), result)
 
         if result:
