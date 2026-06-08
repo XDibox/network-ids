@@ -31,7 +31,7 @@ init(autoreset=True)
 BANNER = f"""{Fore.CYAN}
 ╔══════════════════════════════════════════════════╗
 ║   Network IDS  —  Signature + Anomaly Engine     ║
-║   github.com/youruser/ids                        ║
+║   github.com/XDibox/network-ids                  ║
 ╚══════════════════════════════════════════════════╝
 {Style.RESET_ALL}"""
 
