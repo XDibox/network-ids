@@ -8,33 +8,37 @@ init(autoreset=True)
 
 _NOTIFY_SEVERITIES = {'HIGH', 'CRITICAL'}
 
-_TOAST_ICONS = {
-    'HIGH':     'Warning',
-    'CRITICAL': 'Error',
-}
 
-
-def _send_windows_toast(title: str, message: str, icon: str = 'Warning'):
-    """Send a Windows toast notification from WSL via PowerShell."""
-    if not shutil.which('powershell.exe'):
+def _send_desktop_notification(title: str, message: str, urgency: str = 'normal'):
+    """Send a desktop notification. Supports Linux (notify-send) and WSL (PowerShell toast)."""
+    # Linux native — notify-send (libnotify)
+    if shutil.which('notify-send'):
+        subprocess.Popen(
+            ['notify-send', '-u', urgency, '-t', '6000', title, message],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         return
-    # Escape single quotes to prevent PowerShell command injection
-    title_safe = title.replace("'", "''")
-    msg_safe   = message.replace("'", "''")
-    ps = (
-        "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');"
-        "$n = New-Object System.Windows.Forms.NotifyIcon;"
-        "$n.Icon = [System.Drawing.SystemIcons]::%(icon)s;"
-        "$n.Visible = $true;"
-        "$n.ShowBalloonTip(6000, '%(title)s', '%(msg)s', [System.Windows.Forms.ToolTipIcon]::%(icon)s);"
-        "Start-Sleep -Milliseconds 6500;"
-        "$n.Dispose()"
-    ) % {'icon': icon, 'title': title_safe, 'msg': msg_safe}
-    subprocess.Popen(
-        ['powershell.exe', '-WindowStyle', 'Hidden', '-Command', ps],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    # WSL fallback — Windows toast via PowerShell
+    if shutil.which('powershell.exe'):
+        icon = 'Error' if urgency == 'critical' else 'Warning'
+        # Escape single quotes to prevent PowerShell command injection
+        title_safe = title.replace("'", "''")
+        msg_safe   = message.replace("'", "''")
+        ps = (
+            "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');"
+            "$n = New-Object System.Windows.Forms.NotifyIcon;"
+            "$n.Icon = [System.Drawing.SystemIcons]::%(icon)s;"
+            "$n.Visible = $true;"
+            "$n.ShowBalloonTip(6000, '%(title)s', '%(msg)s', [System.Windows.Forms.ToolTipIcon]::%(icon)s);"
+            "Start-Sleep -Milliseconds 6500;"
+            "$n.Dispose()"
+        ) % {'icon': icon, 'title': title_safe, 'msg': msg_safe}
+        subprocess.Popen(
+            ['powershell.exe', '-WindowStyle', 'Hidden', '-Command', ps],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
 _SEVERITY_COLORS = {
     'LOW':      Fore.YELLOW,
@@ -108,10 +112,11 @@ class AlertManager:
             self._dashboard.record(severity, category, src, description)
 
         if severity in _NOTIFY_SEVERITIES:
-            _send_windows_toast(
+            urgency = 'critical' if severity == 'CRITICAL' else 'normal'
+            _send_desktop_notification(
                 title=f"IDS — {severity}: {category}",
                 message=f"{src}  {description}",
-                icon=_TOAST_ICONS.get(severity, 'Warning'),
+                urgency=urgency,
             )
             if self._pcap:
                 filepath = self._pcap.save(severity, category, src)

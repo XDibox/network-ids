@@ -6,7 +6,24 @@ threshold:
 
 # Monitored ports — port number: service label
 ports:
+  # Remote access
   22: SSH
-  21: FTP
-  3389: RDP
   23: Telnet
+  3389: RDP
+  5900: VNC
+  # File transfer
+  21: FTP
+  # Mail services
+  25: SMTP
+  587: SMTP-Submission
+  110: POP3
+  995: POP3S
+  143: IMAP
+  993: IMAPS
+  # Databases
+  3306: MySQL
+  5432: PostgreSQL
+  1433: MSSQL
+  6379: Redis
+  # Web
+  8080: HTTP-Alt

@@ -5,14 +5,29 @@
 - name: NULL SCAN
   flags: 0
   severity: MEDIUM
-  description: "TCP packet with no flags"
+  description: "TCP packet with no flags — evades some stateless firewalls"
 
 - name: XMAS SCAN
   flags: 41          # FIN(1) + PSH(8) + URG(32)
   severity: MEDIUM
-  description: "FIN+PSH+URG flags set"
+  description: "FIN+PSH+URG — classic Nmap Xmas scan"
 
 - name: FIN SCAN
   flags: 1
   severity: LOW
-  description: "Only FIN flag set"
+  description: "Only FIN flag — stealthy port scan technique"
+
+- name: MAIMON SCAN
+  flags: 17          # FIN(1) + ACK(16)
+  severity: MEDIUM
+  description: "FIN+ACK without data — Uriel Maimon scan, bypasses some packet filters"
+
+- name: ACK SCAN
+  flags: 16          # ACK only
+  severity: LOW
+  description: "ACK-only packet — used to map firewall rules and stateful inspection"
+
+- name: INVALID SYN-FIN
+  flags: 3           # SYN(2) + FIN(1)
+  severity: MEDIUM
+  description: "SYN+FIN simultaneously — invalid TCP combination, used for OS fingerprinting"

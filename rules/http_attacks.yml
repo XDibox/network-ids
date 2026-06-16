@@ -2,30 +2,86 @@
 # Add new attack patterns here — no code changes needed.
 # Backslashes in patterns: use YAML single-quoted strings to avoid double-escaping.
 
-- name: SQL Injection
+# ── SQL Injection ─────────────────────────────────────────────────────────────
+- name: SQL INJECTION
   pattern: 'union.*select'
   severity: HIGH
 
-- name: SQL Injection
+- name: SQL INJECTION
   pattern: "'.*or.*'.*=.*'"
   severity: HIGH
 
-- name: Directory Traversal
+- name: BLIND SQL INJECTION
+  pattern: '\bsleep\s*\(\s*\d|\bbenchmark\s*\(\s*\d'
+  severity: HIGH
+
+- name: SQL SCHEMA ENUMERATION
+  pattern: 'information_schema\b|sys\.tables\b|sysobjects\b|pg_tables\b'
+  severity: HIGH
+
+# ── Path Traversal ────────────────────────────────────────────────────────────
+- name: DIRECTORY TRAVERSAL
   pattern: '\.\./\.\.'
   severity: HIGH
 
-- name: XSS Attempt
-  pattern: '<script'
+- name: ENCODED TRAVERSAL
+  pattern: '%2e%2e[%/\\]|%252e%252e|\.\.%2f|\.\.%5c'
   severity: HIGH
 
-- name: LFI Attempt
-  pattern: '/etc/passwd'
+# ── XSS ──────────────────────────────────────────────────────────────────────
+- name: XSS ATTEMPT
+  pattern: '<script|javascript:|onerror\s*=|onload\s*='
   severity: HIGH
 
-- name: Command Injection
-  pattern: 'cmd\.exe|/bin/sh|/bin/bash'
+# ── LFI / RFI ─────────────────────────────────────────────────────────────────
+- name: LFI ATTEMPT
+  pattern: '/etc/passwd|/etc/shadow|/proc/self|/windows/win\.ini'
   severity: HIGH
 
-- name: Code Injection
+# ── Command / Code Injection ──────────────────────────────────────────────────
+- name: COMMAND INJECTION
+  pattern: 'cmd\.exe|/bin/sh|/bin/bash|/bin/zsh|powershell\.exe'
+  severity: HIGH
+
+- name: CODE INJECTION
   pattern: 'eval\(|base64_decode\('
   severity: HIGH
+
+- name: WEBSHELL ATTEMPT
+  pattern: 'passthru\s*\(|shell_exec\s*\(|popen\s*\(|proc_open\s*\('
+  severity: HIGH
+
+# ── Remote Code Execution ─────────────────────────────────────────────────────
+- name: LOG4SHELL
+  pattern: '\$\{jndi:'
+  severity: CRITICAL
+
+- name: SHELLSHOCK
+  pattern: '\(\)\s*\{[^}]*\}\s*;'
+  severity: CRITICAL
+
+- name: JAVA DESERIALIZATION RCE
+  pattern: 'java\.lang\.Runtime|ProcessBuilder|java\.lang\.reflect'
+  severity: CRITICAL
+
+# ── Server-Side / Header Injection ────────────────────────────────────────────
+- name: SSRF ATTEMPT
+  pattern: '(url|redirect|next|path|file|host|proxy|callback)=(https?://)?(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|localhost|169\.254\.)'
+  severity: HIGH
+
+- name: XXE INJECTION
+  pattern: '<!ENTITY|<!DOCTYPE[^>]+SYSTEM'
+  severity: HIGH
+
+- name: SSTI ATTEMPT
+  pattern: '\{\{[^}]{1,50}\}\}|\$\{[^}]{1,50}\}|#\{[^}]{1,50}\}'
+  severity: HIGH
+
+- name: LDAP INJECTION
+  pattern: '\*\)\(|\)\(.*=\*|\(\|.*=\*'
+  severity: MEDIUM
+
+# ── Scanner Detection ─────────────────────────────────────────────────────────
+- name: SCANNER DETECTED
+  pattern: 'User-Agent:.*\b(sqlmap|nikto|masscan|dirbuster|gobuster|hydra|medusa|nmap|burpsuite|zgrab|wfuzz|ffuf|nuclei)\b'
+  severity: MEDIUM

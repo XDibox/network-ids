@@ -37,6 +37,7 @@ class SignatureEngine:
         self._port_tracker  = defaultdict(deque)
         self._icmp_tracker  = defaultdict(deque)
         self._syn_tracker   = defaultdict(deque)
+        self._udp_tracker   = defaultdict(deque)
         self._brute_tracker = defaultdict(lambda: defaultdict(deque))
         self._arp_table:    dict = {}
         self._dns_tracker   = defaultdict(deque)
@@ -83,8 +84,10 @@ class SignatureEngine:
 
         if packet.haslayer('UDP'):
             self._check_suspicious_ports(packet, src, dst, 'UDP')
+            self._check_udp_flood(packet, src, dst)
             if packet.haslayer('DNS'):
                 self._check_dns_amplification(packet, src)
+                self._check_dns_tunneling(packet, src)
 
     # ── Private helpers ──────────────────────────────────────────────────────
 
@@ -319,3 +322,62 @@ class SignatureEngine:
                     'MEDIUM', 'OS FINGERPRINTING', src,
                     f"{len(track)} probes in 60s — {reason}",
                 )
+
+    # ── UDP Flood ─────────────────────────────────────────────────────────────
+
+    def _check_udp_flood(self, packet, src: str, dst: str):
+        rule = self._rules.get('udp_flood')
+        if not rule:
+            return
+
+        thr    = rule['threshold']
+        now    = time.time()
+        window = thr['time_window']
+
+        track = self._udp_tracker[src]
+        track.append(now)
+        while track and now - track[0] > window:
+            track.popleft()
+
+        if len(track) >= thr['packet_count'] and self._cooldown_ok(f'udpflood_{src}', now, rule['cooldown']):
+            self._alert.alert(
+                rule['severity'], rule['name'], src,
+                f"{len(track)} UDP pkts in {window}s", f"dst={dst}",
+            )
+            self._udp_tracker[src].clear()
+
+    # ── DNS Tunneling ─────────────────────────────────────────────────────────
+
+    def _check_dns_tunneling(self, packet, src: str):
+        rule = self._rules.get('dns_tunnel')
+        if not rule:
+            return
+
+        dns = packet['DNS']
+        if dns.qr != 0 or not dns.qdcount:
+            return
+
+        try:
+            qname = dns.qd.qname.decode('utf-8', errors='ignore').rstrip('.')
+        except Exception:
+            return
+
+        labels       = [l for l in qname.split('.') if l]
+        longest      = max((len(l) for l in labels), default=0)
+        total_len    = len(qname)
+        label_count  = len(labels)
+
+        reason = None
+        if longest > rule.get('max_label_len', 40):
+            reason = f"label length {longest} chars"
+        elif total_len > rule.get('max_total_len', 100):
+            reason = f"FQDN length {total_len} chars"
+        elif label_count > rule.get('max_labels', 7):
+            reason = f"{label_count} subdomain labels"
+
+        if reason and self._cooldown_ok(f'dnstunnel_{src}', time.time(), rule.get('cooldown', 60)):
+            self._alert.alert(
+                rule['severity'], rule['name'], src,
+                f"Suspicious DNS query — {reason}",
+                f"qname={qname[:70]}",
+            )

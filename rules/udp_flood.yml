@@ -1,0 +1,6 @@
+name: UDP FLOOD
+severity: HIGH
+cooldown: 15
+threshold:
+  packet_count: 500   # UDP packets within time_window
+  time_window: 5      # seconds

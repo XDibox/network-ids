@@ -1,12 +1,13 @@
 # Ports commonly associated with malware, backdoors, and attack frameworks.
 # Add any port you want monitored — no code changes needed.
 
+# ── Backdoors / RATs ──────────────────────────────────────────────────────────
 - port: 4444
-  description: Metasploit default
+  description: Metasploit default listener
   severity: HIGH
 
 - port: 1337
-  description: Common backdoor
+  description: Common backdoor port
   severity: HIGH
 
 - port: 31337
@@ -14,9 +15,71 @@
   severity: HIGH
 
 - port: 12345
-  description: NetBus
+  description: NetBus trojan
   severity: HIGH
 
+# ── C2 Framework Ports ────────────────────────────────────────────────────────
+- port: 4443
+  description: Common C2 HTTPS alt (Cobalt Strike, Metasploit)
+  severity: HIGH
+
+- port: 8888
+  description: Common C2 / Jupyter Notebook exposed
+  severity: MEDIUM
+
+# ── Amplification Attack Vectors ──────────────────────────────────────────────
+- port: 11211
+  description: Memcached — amplification DDoS vector (UDP)
+  severity: HIGH
+
+- port: 1900
+  description: SSDP/UPnP — amplification DDoS vector (UDP)
+  severity: MEDIUM
+
+- port: 19
+  description: Chargen — amplification DDoS vector
+  severity: HIGH
+
+# ── Exposed Database Services ─────────────────────────────────────────────────
+- port: 6379
+  description: Redis exposed — unauthenticated by default
+  severity: CRITICAL
+
+- port: 27017
+  description: MongoDB exposed — unauthenticated by default
+  severity: CRITICAL
+
+- port: 3306
+  description: MySQL exposed to network
+  severity: HIGH
+
+- port: 5432
+  description: PostgreSQL exposed to network
+  severity: HIGH
+
+- port: 1433
+  description: MSSQL exposed to network
+  severity: HIGH
+
+# ── Windows / SMB ─────────────────────────────────────────────────────────────
+- port: 445
+  description: SMB — EternalBlue/ransomware vector
+  severity: CRITICAL
+
+- port: 139
+  description: NetBIOS Session Service
+  severity: HIGH
+
+# ── Remote Access ─────────────────────────────────────────────────────────────
+- port: 5900
+  description: VNC — often misconfigured without auth
+  severity: HIGH
+
+- port: 2222
+  description: Alt SSH — common backdoor/honeypot indicator
+  severity: MEDIUM
+
+# ── Miscellaneous ─────────────────────────────────────────────────────────────
 - port: 5555
   description: Android Debug Bridge
   severity: MEDIUM

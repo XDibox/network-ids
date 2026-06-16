@@ -25,9 +25,13 @@ class AnomalyEngine:
 
         # Per-IP tracking
         self._ip_rate  = defaultdict(deque)   # src -> [timestamps]
+        self._ip_bytes = defaultdict(deque)   # src -> [(ts, bytes)]
         self._ip_ports = defaultdict(deque)   # src -> [(ts, port)]
         self._known_ips: set = set()
         self._new_ips: deque = deque()        # [(ts, ip)]
+
+        # Beaconing: src -> {(dst, dport) -> [timestamps of SYN packets]}
+        self._beacon_tracker: dict = defaultdict(lambda: defaultdict(deque))
 
         # Protocol distribution
         self._proto_counts: dict = defaultdict(int)
@@ -61,9 +65,11 @@ class AnomalyEngine:
             return
 
         self._check_packet_rate(src, now)
+        self._check_byte_rate(src, now, len(packet))
         self._check_new_ip(src, now)
         self._check_port_diversity(src, now, packet)
         self._check_protocol_anomaly(proto, now)
+        self._check_beaconing(src, now, packet)
 
     def is_ready(self) -> bool:
         return self._baseline_built
@@ -182,6 +188,66 @@ class AnomalyEngine:
             self._alert.alert(
                 'MEDIUM', 'PROTOCOL ANOMALY', 'network',
                 f"{name} ratio {current:.1%} vs baseline {baseline:.1%}",
+            )
+
+    def _check_byte_rate(self, src: str, now: float, pkt_len: int):
+        window  = 10
+        tracker = self._ip_bytes[src]
+        tracker.append((now, pkt_len))
+        while tracker and now - tracker[0][0] > window:
+            tracker.popleft()
+
+        total_bytes = sum(b for _, b in tracker)
+        rate_mbps   = (total_bytes * 8) / (window * 1_000_000)
+        threshold   = self._config.get('byte_rate_mbps', 50)
+
+        if rate_mbps > threshold and self._cooldown_ok(f'byterate_{src}', now, 60):
+            self._alert.alert(
+                'HIGH', 'DATA EXFILTRATION', src,
+                f"Sustained high byte rate: {rate_mbps:.1f} Mbps (threshold {threshold} Mbps)",
+            )
+
+    def _check_beaconing(self, src: str, now: float, packet):
+        if not packet.haslayer('TCP'):
+            return
+        if int(packet['TCP'].flags) != 0x02:  # SYN only
+            return
+
+        try:
+            from scapy.layers.inet import IP
+            dst   = packet[IP].dst
+            dport = packet['TCP'].dport
+        except Exception:
+            return
+
+        tracker = self._beacon_tracker[src][(dst, dport)]
+        tracker.append(now)
+        while tracker and now - tracker[0] > 1800:
+            tracker.popleft()
+
+        min_samples = self._config.get('beacon_min_samples', 8)
+        if len(tracker) < min_samples:
+            return
+
+        times     = list(tracker)
+        intervals = [times[i + 1] - times[i] for i in range(len(times) - 1)]
+
+        mean_iv = statistics.mean(intervals)
+        if mean_iv < 5 or mean_iv > 300:
+            return
+
+        try:
+            stdev_iv = statistics.stdev(intervals)
+        except statistics.StatisticsError:
+            return
+
+        cv = stdev_iv / mean_iv if mean_iv > 0 else 1.0
+        cv_threshold = self._config.get('beacon_cv_threshold', 0.15)
+
+        if cv < cv_threshold and self._cooldown_ok(f'beacon_{src}_{dst}_{dport}', now, 300):
+            self._alert.alert(
+                'HIGH', 'C2 BEACONING', src,
+                f"Regular connections to {dst}:{dport} every ~{mean_iv:.0f}s (CV={cv:.3f})",
             )
 
     def _cooldown_ok(self, key: str, now: float, seconds: float) -> bool:

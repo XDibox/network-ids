@@ -1,0 +1,6 @@
+name: DNS TUNNELING
+severity: HIGH
+cooldown: 60
+max_label_len: 40     # max length of a single DNS label (between dots)
+max_total_len: 100    # max total FQDN length
+max_labels: 7         # max number of subdomain labels (dots + 1)

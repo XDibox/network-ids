@@ -74,7 +74,7 @@ Every alert includes country, city, ISP, and proxy/hosting detection.
 ## Requirements
 
 - Python 3.10+
-- Linux / WSL (Kali, Ubuntu, Debian)
+- Linux (any distro — Arch, Kali, Ubuntu, Debian, Fedora…) or WSL
 - Root / sudo privileges (required for raw packet capture)
 
 ### Dependencies
@@ -85,18 +85,27 @@ rich>=13.0.0
 # geoip2>=4.0.0  # Optional: for MaxMind offline database
 ```
 
+Desktop notifications require `libnotify` (`notify-send`), available in most distros:
+```bash
+# Arch / EndeavourOS
+sudo pacman -S libnotify
+
+# Debian / Ubuntu / Kali
+sudo apt install libnotify-bin
+```
+
 ---
 
 ## Installation
 
-### WSL / Linux
+### Linux (native)
 
 ```bash
 # Clone the repository
 git clone https://github.com/XDibox/network-ids.git
 cd network-ids
 
-# Create virtual environment (use Linux filesystem, not /mnt/c)
+# Create virtual environment
 python3 -m venv ~/venv-ids
 source ~/venv-ids/bin/activate
 
@@ -104,11 +113,11 @@ source ~/venv-ids/bin/activate
 pip install -r requirements.txt
 ```
 
-### Windows (native)
+### WSL (Windows Subsystem for Linux)
 
-1. Install [Npcap](https://npcap.com) — enable **WinPcap API-compatible mode**
-2. Install dependencies: `pip install -r requirements.txt`
-3. Run PowerShell as Administrator
+Same steps as Linux above. The IDS will use a PowerShell-based Windows toast
+notification as fallback when `notify-send` is not available.
+Use the Linux filesystem (`~`), not `/mnt/c`, for best performance.
 
 ---
 
@@ -181,7 +190,8 @@ WHITELIST = {
     '192.168.1.1',   # gateway
 }
 WHITELIST_NETWORKS = [
-    '172.18.0.0/16', # WSL virtual network
+    # '172.18.0.0/16', # WSL virtual network — uncomment if running under WSL
+    # '192.168.1.0/24', # Example: your local LAN
 ]
 ```
 

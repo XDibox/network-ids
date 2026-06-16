@@ -2,7 +2,7 @@
 """
 Network Intrusion Detection System
 Signature + Anomaly based detection engine
-Run as root/sudo on Linux or WSL.
+Run as root/sudo on Linux (native, WSL, or any POSIX system).
 """
 
 import sys
