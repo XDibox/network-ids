@@ -105,19 +105,24 @@ sudo apt install libnotify-bin
 git clone https://github.com/XDibox/network-ids.git
 cd network-ids
 
-# Create virtual environment
-python3 -m venv ~/venv-ids
-source ~/venv-ids/bin/activate
+# Install dependencies (Arch / EndeavourOS)
+sudo pacman -S python-scapy python-rich python-colorama
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (Debian / Ubuntu / Kali)
+sudo apt install python3-scapy python3-rich python3-colorama
 ```
 
 ### WSL (Windows Subsystem for Linux)
 
-Same steps as Linux above. The IDS will use a PowerShell-based Windows toast
-notification as fallback when `notify-send` is not available.
-Use the Linux filesystem (`~`), not `/mnt/c`, for best performance.
+```bash
+git clone https://github.com/XDibox/network-ids.git
+cd network-ids
+pip install -r requirements.txt
+```
+
+The IDS will use a PowerShell-based Windows toast notification as fallback
+when `notify-send` is not available. Use the Linux filesystem (`~`),
+not `/mnt/c`, for best performance.
 
 ---
 
@@ -201,23 +206,23 @@ WHITELIST_NETWORKS = [
 
 ```bash
 # List available network interfaces
-sudo ~/venv-ids/bin/python3 IDS.py --list-interfaces
+sudo python3 IDS.py --list-interfaces
 
 # Standard mode (text alerts)
-sudo ~/venv-ids/bin/python3 IDS.py -i eth0
+sudo python3 IDS.py -i eth0
 
 # Live TUI dashboard
-sudo ~/venv-ids/bin/python3 IDS.py -i eth0 --dashboard
+sudo python3 IDS.py -i eth0 --dashboard
 
 # Custom baseline window and log file
-sudo ~/venv-ids/bin/python3 IDS.py -i eth0 --baseline 60 --log /var/log/ids.log
+sudo python3 IDS.py -i eth0 --baseline 60 --log /var/log/ids.log
 ```
 
 ### Environment variables
 
 ```bash
 export ABUSEIPDB_KEY=your_key_here
-sudo -E ~/venv-ids/bin/python3 IDS.py -i eth0 --dashboard
+sudo -E python3 IDS.py -i eth0 --dashboard
 ```
 
 ### Run as a systemd service (persistent)
